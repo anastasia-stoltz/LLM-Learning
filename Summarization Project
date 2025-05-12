@@ -1,0 +1,119 @@
+# imports
+
+import os
+import requests
+from dotenv import load_dotenv
+from bs4 import BeautifulSoup
+from IPython.display import Markdown, display
+from openai import AzureOpenAI
+
+# Load environment variables in a file called .env
+
+load_dotenv(override=True)
+api_key = os.getenv('AZURE_OPENAI_API_KEY')
+api_base = os.getenv("AZURE_OPENAI_ENDPOINT") 
+
+
+azureai = AzureOpenAI(
+    api_key=api_key,
+    azure_endpoint=api_base,
+    api_version="2023-12-01-preview" 
+    # The api_version parameter in the AzureOpenAI constructor refers to the version of the Azure OpenAI REST API you want to use. 
+    # This is important because Azure regularly updates its API, adding features, fixing bugs, and sometimes making changes that aren't backward-compatible.
+    #"2023-12-01-preview": This is a preview version of the API released on December 1, 2023. 
+    # The -preview suffix means it's a pre-release version, typically used for testing new features that may change before the stable release.
+)
+
+
+# A class to represent a Webpage
+# If you're not familiar with Classes, check out the "Intermediate Python" notebook
+
+# Some websites need you to use proper headers when fetching them:
+headers = {
+ "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
+}
+
+
+# a Class to represent a webpage
+class Website:
+
+    def __init__(self, url):
+        """
+        Create this Website object from the given url using the BeautifulSoup library
+        """
+        self.url = url
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.content, 'html.parser') #Beautiful Soup is a Python library for pulling data out of HTML and XML files.
+        # Web scraping is the process of automatically extracting data from websites. 
+        # It's commonly used to collect information from web pages that may not provide a public API or downloadable datasets.
+        self.title = soup.title.string if soup.title else "No title found"
+        for irrelevant in soup.body(["script", "style", "img", "input"]):
+            irrelevant.decompose()
+        self.text = soup.body.get_text(separator="\n", strip=True)
+
+# Let's try one out
+BURG = Website("https://burgtranslations.com")
+#print(BURG.title)
+#print(BURG.text)
+
+
+# Define our system prompt - you can experiment with this later, changing the last sentence to 'Respond in markdown in Spanish."
+
+system_prompt = "You are an assistant that analyzes the contents of a website \
+and provides a short summary, ignoring text that might be navigation related. \
+Respond in markdown."
+
+# system_prompt_idea2 = "You are a marketing analyst. Summarize the main selling points and brand tone of the website. Respond in markdown."
+# system_prompt_idea3 = “You are analyzing a competitor’s website. Provide a markdown summary focusing on products, services, and unique value propositions.”
+
+
+# A function that writes a User Prompt that asks for summaries of websites:
+
+def user_prompt_for(website):
+    user_prompt = f"You are looking at a website titled {website.title}"
+    user_prompt += "\nThe contents of this website is as follows; \
+please provide a short summary of this website in markdown. \
+If it includes news or announcements, then summarize these too.\n\n"
+    user_prompt += website.text
+    return user_prompt
+
+# user_prompt_for(BURG)
+
+## Messages - a format from OpenAI that is now widely used
+messages = [
+    {"role": "system", "content": "You are a snarky assistant"},
+    {"role": "user", "content": "What is 2 + 2?"}
+]
+
+# See how this function creates exactly the format above
+
+def messages_for(website):
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt_for(website)}
+    ]
+
+#messages_for(BURG)
+
+# And now: call the OpenAI API. You will get very familiar with this!
+
+def summarize(url, model_name = "gpt-4o-mini"): #adding model name parameter to allow for selection of different model types in open ai
+    website = Website(url)
+    response = azureai.chat.completions.create(
+        messages = messages_for(website)
+    )
+    return response.choices[0].message.content
+
+# summarize("https://burgtranslations.com")
+
+
+# A function to display this nicely in the Jupyter output, using markdown
+
+def display_summary(url, model_name = "gpt-4o-mini"):
+    summary = summarize(url, model_name=model_name)
+    display(Markdown(summary))
+    return summary
+
+
+x = display_summary("https://burgtranslations.com")
+print(x)
